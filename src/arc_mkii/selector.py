@@ -12,8 +12,14 @@ Theta: TypeAlias = tuple[Fraction, ...]
 THETA0: Theta = tuple(Fraction(1 if i == 3 else 0) for i in range(len(FEATURE_NAMES)))
 
 
-def _useful(view: SelectorView, query_id: int) -> bool:
+def _useful(
+    view: SelectorView,
+    query_id: int,
+    resources: ResourceCounter | None = None,
+) -> bool:
     query_mask = view.menu.queries[query_id]
+    if resources is not None:
+        resources.public_truth_table_bit_inspections += 2 * view.candidate_mask.bit_count()
     child0 = candidate_child(view.candidate_mask, query_mask, 0)
     child1 = candidate_child(view.candidate_mask, query_mask, 1)
     return child0 != 0 and child1 != 0
@@ -40,7 +46,11 @@ def query_scores(
         return ()
     if view.remaining_budget <= 0 or not view.remaining_query_ids:
         return ()
-    useful = [query_id for query_id in view.remaining_query_ids if _useful(view, query_id)]
+    useful = [
+        query_id
+        for query_id in view.remaining_query_ids
+        if _useful(view, query_id, resources)
+    ]
     return tuple((query_id, score_query(theta, view, query_id, resources)) for query_id in useful)
 
 
