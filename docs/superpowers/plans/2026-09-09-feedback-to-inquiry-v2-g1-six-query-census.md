@@ -4,7 +4,7 @@
 
 **Goal:** Implement and execute only the V2 G1 structural census over the prospectively frozen six-query universe, decide whether at least 320 canonical structural families exist, fossilize that construction-gate result, and stop before G2, fitting, or evaluation.
 
-**Architecture:** Branch directly from the frozen executable preflight base `078b3cfc948262bb71604a631e17972f8ad11a1f`. Preserve the four-query V0 `Menu` exactly, add a separate order-preserving six-query arena type, generalize only query-count-dependent host/planner plumbing, then implement the frozen V2 generator, structural admission, exact six-query family quotient, deterministic shardable census, and a census-only CLI. The G1 executable imports no fitting/evaluation/corpus/scramble/artifact machinery and exposes no command other than `census`.
+**Architecture:** Create the implementation branch/worktree **directly from** frozen executable preflight base `078b3cfc948262bb71604a631e17972f8ad11a1f`; do not merge the planning branch into executable ancestry. Preserve the four-query V0 `Menu` exactly, add a separate order-preserving six-query arena type, generalize only query-count-dependent host/planner plumbing, then implement the frozen V2 generator, structural admission, exact six-query family quotient, deterministic shardable census, and a census-only CLI. The G1 executable imports no fitting/evaluation/corpus/scramble/artifact machinery and exposes no command other than `census`.
 
 **Tech Stack:** Python 3.13; Python standard library only at runtime; `pytest`; exact `fractions.Fraction`; SHA-256; JSON/JSONL; `concurrent.futures.ProcessPoolExecutor` for deterministic execution sharding only.
 
@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - Immutable executable ancestry: `freeze/v2-preflight-base@078b3cfc948262bb71604a631e17972f8ad11a1f`.
+- Implementation branch must be created from that SHA itself. The plan branch is documentation only and must not become executable ancestry.
 - Frozen V0 scientific mechanism remains `c9897ae02829aeed31cccdaef662de4c715b312e`; G0.5 already certifies its scientific observable vector against the preflight base.
 - This plan implements **V2 G1 only**. It must not freeze a TRAIN/EVAL split, build V2 training rows, fit LEARN/SCRAMBLED, evaluate any arm, or compute V2 ignition.
 - The hidden fault universe remains exactly `0..7`.
@@ -51,7 +52,7 @@
 - Create during official G1 execution: `experiments/v2/g1-census/CENSUS.json`
 - Create during official G1 execution: `experiments/v2/g1-census/FAMILIES.jsonl`
 - Create during official G1 execution: `experiments/v2/g1-census/SHA256.txt`
-- Create after official G1 execution: `experiments/v2/g1-census/G1_RECORD.md`
+- Create after official G1 execution: `experiments/v2/G1_RECORD.md` — outside the three-file census directory so CLI custody remains exact.
 
 ---
 
@@ -523,24 +524,24 @@ git commit -m "feat: add exact V2 six-query family quotient"
 - Create: `tests/test_v2_census.py`
 
 **Interfaces:**
-- Produces: `FamilyRecord`, `CensusPart`, `CensusResult`, `scan_range(start, stop)`, `merge_parts(parts)`, `run_census(workers=4)`.
+- Produces: `FamilyRecord`, `CensusPart`, `CensusResult`, `scan_records(records)`, `scan_range(start, stop)`, `merge_parts(parts)`, `run_census(workers=4)`.
 - `run_census` always covers exactly `[0, RAW_COUNTERS)`; `workers` changes execution only, not scientific semantics.
 
 - [ ] **Step 1: Write synthetic census-stage and merge tests**
 
-Do not use a confirmatory-seed prefix for expected counts. Use hand-built synthetic `(counter, arena)` records and a pure helper `scan_records(records)`.
+Do not use a confirmatory-seed prefix for expected counts. Use hand-built synthetic `(counter, arena)` records.
 
 ```python
 from arc_mkii.domain import SixQueryArena
 from arc_mkii.v2_census import merge_parts, scan_records
 
 ADMITTED = SixQueryArena((16, 46, 89, 4, 45, 1))
-ALIAS = SixQueryArena((1, 45, 4, 89, 46, 16))
+ADMITTED_ALIAS = SixQueryArena((16, 46, 89, 4, 1, 45))
 REJECTED = SixQueryArena((1, 2, 4, 8, 16, 32))
 
 
 def test_first_admitted_counter_is_retained_for_family():
-    part = scan_records([(9, ADMITTED), (12, ALIAS)])
+    part = scan_records([(9, ADMITTED), (12, ADMITTED_ALIAS)])
     assert part.admitted_presentations == 2
     assert len(part.first_families) == 1
     record = next(iter(part.first_families.values()))
@@ -549,7 +550,7 @@ def test_first_admitted_counter_is_retained_for_family():
 
 
 def test_shard_merge_is_order_independent_and_keeps_global_first_counter():
-    left = scan_records([(12, ALIAS)])
+    left = scan_records([(12, ADMITTED_ALIAS)])
     right = scan_records([(9, ADMITTED)])
     merged_a = merge_parts([left, right])
     merged_b = merge_parts([right, left])
@@ -557,6 +558,8 @@ def test_shard_merge_is_order_independent_and_keeps_global_first_counter():
     record = next(iter(merged_a.first_families.values()))
     assert record.first_counter == 9
 ```
+
+`ADMITTED_ALIAS` is a query permutation of the same canonical family that still satisfies the operational admission rule; this is why it is safe for the first-admitted-family fixture.
 
 Add a rejected synthetic arena test verifying it increments grammar-valid and whichever structural stages it reaches but not `admitted_presentations`.
 
@@ -658,6 +661,7 @@ git commit -m "feat: add deterministic V2 G1 census engine"
 - [ ] **Step 1: Write failing parser/import-isolation/output tests**
 
 ```python
+import subprocess
 import sys
 
 from arc_mkii import v2_g1_cli
@@ -672,16 +676,23 @@ def test_g1_parser_exposes_only_census():
     assert "train" not in help_text
 
 
-def test_importing_g1_cli_does_not_import_learning_or_evaluation_modules():
-    forbidden = {
-        "arc_mkii.fit",
-        "arc_mkii.evaluate",
-        "arc_mkii.corpus",
-        "arc_mkii.scramble",
-        "arc_mkii.artifact",
-    }
-    assert forbidden.isdisjoint(sys.modules)
+def test_g1_cli_import_graph_excludes_learning_and_evaluation_modules():
+    code = r'''
+import sys
+import arc_mkii.v2_g1_cli
+forbidden = {
+    "arc_mkii.fit",
+    "arc_mkii.evaluate",
+    "arc_mkii.corpus",
+    "arc_mkii.scramble",
+    "arc_mkii.artifact",
+}
+assert forbidden.isdisjoint(sys.modules), forbidden.intersection(sys.modules)
+'''
+    subprocess.run([sys.executable, "-c", code], check=True)
 ```
+
+Use a subprocess so the full pytest collection cannot contaminate `sys.modules` with unrelated legacy modules.
 
 For output tests, patch only `v2_g1_cli.run_census` to return a tiny synthetic `CensusResult`; this test is specifically for serialization/CLI behavior, not census science. Assert exact three-file output, deterministic byte identity on a second invocation, and fail-closed behavior if any retained file is altered.
 
@@ -780,9 +791,9 @@ python -m pytest tests/test_v2_g1_semantic_regression.py -q
 
 - [ ] **Step 3: Implement the G1 regression driver from the existing G0.5 collector**
 
-Reuse the existing `scripts/g05_semantic_equivalence.py` semantic object exactly: frozen TRAIN/EVAL membership, 189,177 training rows, exact LEARN/SCRAMBLED/FROZEN theta, full scramble assignment digest, all query scores/choices/transitions/repairs/successes over all 320 menus × both budgets × eight faults, EVAL success counts, and ignition decision.
+Reuse the existing `scripts/g05_semantic_equivalence.py` semantic object **including the exact schema string used there**, so the unchanged semantic vector retains the G0.5 hash. The object covers frozen TRAIN/EVAL membership, 189,177 training rows, exact LEARN/SCRAMBLED/FROZEN theta, full scramble assignment digest, all query scores/choices/transitions/repairs/successes over all 320 menus × both budgets × eight faults, EVAL success counts, and ignition decision.
 
-Differences from the G0.5 driver:
+Use:
 
 ```python
 BASE_COMMIT = "078b3cfc948262bb71604a631e17972f8ad11a1f"
@@ -830,7 +841,7 @@ git commit -m "test: certify V0 semantics across V2 G1 plumbing"
 - Create during execution: `experiments/v2/g1-census/CENSUS.json`
 - Create during execution: `experiments/v2/g1-census/FAMILIES.jsonl`
 - Create during execution: `experiments/v2/g1-census/SHA256.txt`
-- Create after verification: `experiments/v2/g1-census/G1_RECORD.md`
+- Create after verification: `experiments/v2/G1_RECORD.md`
 
 **Interfaces:**
 - Consumes: frozen V2 design and all prior G1 implementation tasks.
@@ -875,7 +886,7 @@ Do not run a prefix census first. Do not inspect partial in-memory counts while 
 
 - [ ] **Step 3: Verify retained custody without rerunning the census**
 
-Check exact file set and SHA-256 values from `SHA256.txt`, then parse `CENSUS.json` and require:
+Check exact census-directory file set and SHA-256 values from `SHA256.txt`, then parse `CENSUS.json` and require:
 
 ```python
 assert census["counts"]["raw_counters"] == 1_048_576
@@ -885,9 +896,9 @@ assert census["counts"]["admitted_canonical"] == sum(
 assert census["status"] in {"G1_PASS", "ARENA_UNIVERSE_INSUFFICIENT"}
 ```
 
-- [ ] **Step 4: Write the bounded G1 record**
+- [ ] **Step 4: Write the bounded G1 record outside the census directory**
 
-`G1_RECORD.md` must include:
+`experiments/v2/G1_RECORD.md` must include:
 
 ```text
 preflight base: 078b3cfc948262bb71604a631e17972f8ad11a1f
@@ -925,14 +936,14 @@ NO V2 SCIENTIFIC RESULT
 If insufficient:
 
 ```bash
-git add experiments/v2/g1-census
+git add experiments/v2/g1-census experiments/v2/G1_RECORD.md
 git commit -m "record: close V2 G1 insufficient arena census"
 ```
 
 If pass:
 
 ```bash
-git add experiments/v2/g1-census
+git add experiments/v2/g1-census experiments/v2/G1_RECORD.md
 git commit -m "record: freeze V2 G1 six-query census"
 ```
 
@@ -974,6 +985,7 @@ G2 requires a separate approved plan even if G1 passes.
 
 ### 1. Spec coverage
 
+- Direct executable ancestry from frozen preflight base, without plan-branch ancestry: Architecture and Global Constraints.
 - Six distinct ordered queries: Task 1.
 - Generic query-count host/planner plumbing while preserving V0: Tasks 2 and 7.
 - Frozen fresh seed and exact `2^20` counter grammar: Task 3.
@@ -986,7 +998,7 @@ G2 requires a separate approved plan even if G1 passes.
 - G1 retains all first-admitted family records but does not compute/select the G2 TRAIN/EVAL split: Tasks 5, 6, and 8.
 - Full preflight semantic preservation of V0 observable vector: Task 7.
 - Historical resource boundary remains intact: Global Constraints and Task 8.
-- Custody and durable G1 fossil: Tasks 6 and 8.
+- Census directory remains an exact three-file custody object; narrative G1 fossil is separate: Tasks 6 and 8.
 
 No G2, training, or evaluation requirement is implemented by this plan.
 
@@ -994,7 +1006,7 @@ No G2, training, or evaluation requirement is implemented by this plan.
 
 No `TODO`, `TBD`, “implement later”, unspecified validation, or “similar to” instructions remain. All execution gates, schemas, file names, constants, commands, and claim boundaries are explicit.
 
-### 3. Type consistency
+### 3. Type consistency and fixture audit
 
 - `QuerySet.queries` is `tuple[int, ...]`.
 - `SixQueryArena.queries` is a six-int tuple and preserves operational order.
@@ -1003,5 +1015,9 @@ No `TODO`, `TBD`, “implement later”, unspecified validation, or “similar t
 - `FamilyRecord` carries only structural/custody data; no learner outcome enters it.
 - `CensusPart.first_families` maps family ID to globally first admitted record after merge.
 - `CENSUS.json` `admitted_canonical` equals the number of retained `FAMILIES.jsonl` records.
+- Generator fixture is frozen and checked without running admission on counter 0.
+- Hand witness `(16,46,89,4,45,1)` has `q_F=1`, continuation `6`, alternatives `8`, and feature pairs `(1/4,1/4)` versus `(1/2,1/2)`.
+- Census alias fixture `(16,46,89,4,1,45)` remains admitted and belongs to the same canonical family as the witness.
+- Canonical fixture bytes are `00 01 02 04 09 0b 1a 2b`; family ID is `9444534fc7a1171614925bb2fee464aaf28835bb24dbd1e61454de6891c1b942`.
 
 The plan is internally consistent and stops at G1.
