@@ -2,7 +2,8 @@ from itertools import permutations
 
 from arc_mkii.domain import Menu
 from arc_mkii.host import execute_query, initial_state, terminal_repair
-from arc_mkii.selector import THETA0, choose_query
+from arc_mkii.resources import ResourceCounter
+from arc_mkii.selector import THETA0, choose_query, query_scores
 
 
 def test_theta0_has_one_balance_weight_and_seven_zero_weights():
@@ -12,6 +13,15 @@ def test_theta0_has_one_balance_weight_and_seven_zero_weights():
 def test_frozen_control_uses_public_query_order_for_exact_ties():
     view = initial_state(Menu((15, 23, 51, 85)), fault=0, budget=3).selector_view()
     assert choose_query(THETA0, view) == 0
+
+
+def test_usefulness_filter_truth_table_work_is_counted_without_changing_scores():
+    view = initial_state(Menu((15, 23, 51, 85)), fault=0, budget=3).selector_view()
+    baseline = query_scores(THETA0, view)
+    resources = ResourceCounter()
+    measured = query_scores(THETA0, view, resources=resources)
+    assert measured == baseline
+    assert resources.public_truth_table_bit_inspections == 320
 
 
 def _success_for_sequence(menu, sequence):
