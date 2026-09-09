@@ -75,7 +75,7 @@ No coefficient, feature, regularizer, corruption scheme, learner, repair rule, o
 
 V1 increases the primitive query menu from four to five queries. Code that currently assumes `range(4)` or a four-query tuple may be generalized to the menu's declared query count. This is environment plumbing, not a new learner.
 
-V1 must preserve the public presentation order of the five queries because the frozen selector uses public query ID only for exact-score tie breaking. V0 behavior must remain byte/behavior compatible on the already frozen four-query manifests.
+V1 must preserve the public presentation order of the five queries because the frozen selector uses public query ID for exact-score tie breaking. V0 behavior must remain behavior-compatible on the already frozen four-query manifests.
 
 ---
 
@@ -117,9 +117,9 @@ digest  = SHA256(payload)
 mask    = 1 + (uint64_be(digest[0:8]) mod 127)
 ```
 
-Because masks `1..127` are the normalized representatives of the nonconstant answer-complement pairs, no later complement normalization changes the public slot assignment.
+Masks `1..127` are the normalized representatives of the nonconstant answer-complement pairs. The five slot positions are the public query IDs `0..4` for that ordered raw arena.
 
-A raw counter is grammar-valid iff its five masks are distinct. The five slot positions are the public query IDs `0..4` for that raw representative.
+A raw counter is grammar-valid iff its five masks are distinct.
 
 The entire `2^20` counter window is the prospective V1 candidate universe. The census must process it exhaustively or stop without scientific interpretation.
 
@@ -127,11 +127,19 @@ This finite window was chosen during design, before V1 implementation or V1 lear
 
 ---
 
-## 4. Canonical identity and presentation custody
+## 4. Ordered arena identity versus canonical freshness family
 
-Training/evaluation freshness is defined over structural arena identity, not over query labels.
+V1 deliberately separates two notions that V0 could safely collapse.
 
-For a five-query menu, canonical identity is invariant under:
+### Operational arena identity
+
+Public query order is operational in V1 because FROZEN breaks exact score ties by the smallest public query ID. Therefore a permutation of query IDs can change FROZEN behavior even when the underlying five partitions are otherwise the same.
+
+Arena admission is consequently evaluated on the **ordered raw presentation** produced by the deterministic counter stream. The presentation is not reordered to help or hurt FROZEN.
+
+### Canonical family identity
+
+After an ordered arena passes the structural Gladiator admission rule, compute a separate canonical **freshness-family ID** that ignores nuisance relabelings:
 
 - permutation of the eight fault names;
 - permutation of the five query names;
@@ -139,35 +147,38 @@ For a five-query menu, canonical identity is invariant under:
 
 Canonicalization extends the V0 row-signature construction from four to five columns: enumerate all `5!` column permutations and all `2^5` answer-complement patterns, construct the eight five-bit row signatures, sort the eight rows, and retain the lexicographically least eight-byte sequence.
 
-The canonical ID is:
+The family ID is:
 
 ```text
-SHA256("arc-mkii-v1-gladiator-task\0" || canonical_bytes)
+SHA256("arc-mkii-v1-gladiator-family\0" || canonical_bytes)
 ```
 
-### First-representative rule
+This family ID is used conservatively to prevent structurally aliased arenas from crossing the train/evaluation boundary. It is **not** a claim that differently ordered presentations are behaviorally equivalent under FROZEN.
 
-Public query order matters to FROZEN's exact tie break, while canonical identity deliberately ignores that order. Therefore V1 freezes one presentation without choosing among aliases using performance.
+### First-admitted-family rule
 
-Process raw counters in ascending order. For each canonical ID, retain only the **first grammar-valid raw representative** encountered. All later canonically equivalent representatives are discarded before arena-admission tests.
+Process raw counters in ascending order. Structural admission is evaluated first on the ordered presentation. Only admitted ordered arenas are canonicalized. For each canonical family ID, retain the **first admitted ordered presentation** encountered and discard later admitted aliases.
 
 Thus:
 
 ```text
-raw stream
-  -> first canonical representative
-  -> structural arena test
+raw ordered arena
+  -> structural admission
+  -> canonical freshness family
+  -> first admitted presentation per family
 ```
 
 and never:
 
 ```text
-all equivalent presentations
-  -> inspect planner/FROZEN behavior
+all ordered aliases
+  -> inspect LEARN/SCRAMBLED outcomes
   -> choose favorable presentation
 ```
 
-This prevents representation alias shopping. Presentation is fixed by the external deterministic stream before continuation value is inspected.
+No learned parameter or learned outcome participates in presentation retention.
+
+This ordering is also an economy requirement: the expensive `5! * 2^5` canonical-family transform is paid only for the rare structurally admitted arenas, not for all 1,048,576 raw counters.
 
 ---
 
@@ -199,7 +210,7 @@ b^*=\frac12
 
 So at least two root queries are tied at the maximum immediate `4/4` split.
 
-Under `THETA0`, all members of `T` receive the same learned score because FROZEN weights only immediate split balance. Therefore its chosen root query is:
+Under `THETA0`, all members of `T` receive the same selector score because FROZEN weights only immediate split balance. Therefore its chosen root query is:
 
 ```math
 q_F=\min T,
@@ -264,7 +275,7 @@ This gate uses no learned coefficient. It establishes only that the frozen featu
 
 ### Admission summary
 
-Every admitted arena therefore contains the following exact structure:
+Every admitted ordered arena therefore contains:
 
 ```text
 multiple 4/4 root queries
@@ -289,27 +300,27 @@ It records at least:
 
 - `N_raw_counters = 1,048,576`;
 - `N_grammar_valid`;
-- `N_first_canonical_representatives`;
 - `N_root_matched_tie`;
 - `N_planner_gap`;
-- `N_feature_representable`;
-- `N_admitted_canonical`.
+- `N_feature_representable_ordered`;
+- `N_admitted_ordered`;
+- `N_admitted_canonical_families`.
 
-No fitted selector is loaded or computed during this census.
+Canonical-family computation occurs only after structural admission. No fitted selector is loaded or computed during this census.
 
 The hard gate is:
 
 ```math
-N_{admitted\ canonical}\ge320.
+N_{admitted\ canonical\ families}\ge320.
 ```
 
-If fewer than 320 canonical arenas survive, V1 stops:
+If fewer than 320 canonical families survive, V1 stops:
 
 ```text
 ARENA_UNIVERSE_INSUFFICIENT -> STOP -> NO TRAINING -> NO V1 RESULT
 ```
 
-The 320 threshold is not relaxed after seeing the census.
+The `2^20` window and the 320 threshold are not enlarged, relaxed, or resampled after seeing the census.
 
 If at least 320 survive, the arena design passes only this construction gate. It is not evidence that LEARN will beat either control.
 
@@ -317,20 +328,20 @@ If at least 320 survive, the arena design passes only this construction gate. It
 
 ## 7. Prospective train/evaluation split
 
-For every admitted canonical arena, compute a split rank:
+For every retained admitted canonical family, compute a split rank:
 
 ```text
-SHA256("arc-mkii-v1-gladiator-split\0" || canonical_id)
+SHA256("arc-mkii-v1-gladiator-split\0" || family_id)
 ```
 
-Sort by this rank, with canonical ID as the deterministic secondary key.
+Sort by this rank, with family ID as the deterministic secondary key.
 
-Freeze:
+Freeze the associated retained ordered presentation for:
 
-- first 256 arenas as TRAIN;
-- next 64 arenas as EVAL.
+- first 256 families as TRAIN;
+- next 64 families as EVAL.
 
-All remaining admitted arenas are outside the V1 scientific run. They may be retained for custody but cannot be promoted into V1 evaluation after results are known.
+All remaining admitted families are outside the V1 scientific run. They may be retained for custody but cannot be promoted into V1 evaluation after results are known.
 
 Train/evaluation inclusion therefore depends only on the prospectively declared structural grammar and cryptographic rank, never on repair outcomes from LEARN/SCRAMBLED or learned coefficients.
 
@@ -376,13 +387,13 @@ The already frozen bidirectional selector-state transplant must also pass.
 
 A gain at budget 3 with a loss at budget 2 is a tradeoff and fails ignition. A win only over SCRAMBLED is insufficient. A win only over FROZEN is insufficient.
 
-V1 is designed so budget 3 is the main gladiator battleground; budget 2 remains a real non-regression/control condition. This interpretation does not modify the mathematical acceptance rule.
+V1 is designed so budget 3 is the main Gladiator battleground; budget 2 remains a real non-regression/control condition. This interpretation does not modify the mathematical acceptance rule.
 
 ---
 
 ## 10. Mechanism diagnostics — not acceptance criteria
 
-The following are preregistered descriptive diagnostics:
+The following are preregistered descriptive diagnostics.
 
 ### Root continuation-optimal choice rate
 
@@ -455,11 +466,11 @@ Freeze this scientific design before V1 implementation.
 
 Implement only enough arena machinery to exhaust the fixed `2^20` raw counter universe and produce the census. No training is permitted.
 
-If `N_admitted_canonical < 320`, stop.
+If `N_admitted_canonical_families < 320`, stop.
 
 ### G2 — protocol freeze
 
-If G1 passes, freeze the exact 256/64 manifests, canonical identities, first-representative presentations, scramble descriptor, protocol constants, and file hashes before fitting.
+If G1 passes, freeze the exact 256/64 manifests, family identities, retained ordered presentations, scramble descriptor, protocol constants, and file hashes before fitting.
 
 ### G3 — implementation validation
 
@@ -471,7 +482,7 @@ Record an exact `IMPLEMENTATION_FREEZE_ID_V1` and stop.
 
 Only after explicit authorization may the frozen V1 implementation fit LEARN and SCRAMBLED and inspect the 64-arena evaluation family.
 
-No manifest redraw, coefficient tuning, feature change, grammar change, or acceptance-rule change is permitted after G2.
+No manifest redraw, coefficient tuning, feature change, grammar change, raw-window extension, or acceptance-rule change is permitted after G2.
 
 ---
 
@@ -479,7 +490,7 @@ No manifest redraw, coefficient tuning, feature change, grammar change, or accep
 
 ### If the census fails
 
-Claim only that this prospective arena generator did not yield the required 320 canonical matched-tie worlds. Do not infer anything about feedback learning.
+Claim only that this prospective arena generator did not yield the required 320 canonical Gladiator families. Do not infer anything about feedback learning.
 
 ### If LEARN changes `theta` but does not improve root continuation choice
 
@@ -518,7 +529,7 @@ V1 does not claim:
 - that root-route improvement implies general future counterfactual accessibility;
 - that an available better query implies a learner can discover it outside this frozen feature interface;
 - that success establishes safe self-modification or corrigibility;
-- that V1 result transfers to MATRIX, OpenCore, Revisics, transformers, or neural systems.
+- that V1 transfers to MATRIX, OpenCore, Revisics, transformers, or neural systems.
 
 V1 exists to earn one thing cleanly:
 
