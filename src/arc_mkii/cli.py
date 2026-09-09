@@ -18,6 +18,7 @@ from .fit import fit_theta
 from .evaluate import evaluate_theta, ignition_pass, transplant_equivalent
 from .planner import planner_reference
 from .manifests import generate_protocol_menus, protocol_record
+from .protocol import verify_protocol
 from .resources import ResourceCounter
 from .scramble import (
     scramble_descriptor,
@@ -99,14 +100,6 @@ def _load_menu_jsonl(path: Path) -> list[Menu]:
     return menus
 
 
-def _manifest_hashes(protocol: Path) -> dict[str, str]:
-    recorded: dict[str, str] = {}
-    for line in (protocol / "MANIFEST_SHA256.txt").read_text(encoding="ascii").splitlines():
-        digest, name = line.split("  ", 1)
-        recorded[name] = digest
-    return recorded
-
-
 def _implementation_commit() -> str:
     completed = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -123,10 +116,8 @@ def fit_artifact(protocol: str | Path, arm: str, out: str | Path) -> None:
     if arm not in {"learn", "scrambled", "frozen"}:
         raise ValueError("arm must be learn, scrambled, or frozen")
 
-    protocol_meta = json.loads((protocol / "PROTOCOL.json").read_text(encoding="utf-8"))
-    if protocol_meta.get("schema") != "arc-reactor-mkii-protocol/v0":
-        raise ValueError("protocol schema mismatch")
-    hashes = _manifest_hashes(protocol)
+    verification = verify_protocol(protocol)
+    hashes = verification.hashes
 
     resources = ResourceCounter()
     tracemalloc.start()
@@ -166,6 +157,7 @@ def fit_artifact(protocol: str | Path, arm: str, out: str | Path) -> None:
         "schema": "arc-reactor-mkii-fit-receipt/v0",
         "implementation_commit": _implementation_commit(),
         "protocol_hashes": hashes,
+        "protocol_manifest_sha256": verification.manifest_sha256,
         "arm": arm,
         "training_row_count": training_row_count,
         "resources": asdict(report),
@@ -219,9 +211,7 @@ def evaluate_artifacts(
     if out.exists():
         raise FileExistsError(f"evaluation output already exists: {out}")
 
-    protocol_meta = json.loads((protocol / "PROTOCOL.json").read_text(encoding="utf-8"))
-    if protocol_meta.get("schema") != "arc-reactor-mkii-protocol/v0":
-        raise ValueError("protocol schema mismatch")
+    verification = verify_protocol(protocol)
     menus = _load_menu_jsonl(protocol / "EVAL_MENUS.jsonl")
 
     artifact_paths = {
@@ -235,7 +225,7 @@ def evaluate_artifacts(
         for name, theta in thetas.items()
     }
 
-    # Bidirectional state-transplant checks.  Only theta crosses the host boundary.
+    # Fresh-host replay checks. Only theta crosses the host boundary.
     transplant = {
         "theta_before_into_learn_host": transplant_equivalent(thetas["FROZEN"], thetas["FROZEN"], menus),
         "theta_after_into_frozen_host": transplant_equivalent(thetas["LEARN"], thetas["LEARN"], menus),
@@ -279,6 +269,7 @@ def evaluate_artifacts(
     (out / "SUMMARY.json").write_bytes(
         _json_bytes({
             "schema": "arc-reactor-mkii-evaluation-summary/v0",
+            "protocol_manifest_sha256": verification.manifest_sha256,
             "ignition_pass": passed,
             "success_by_budget": {
                 str(b): {name: results[name].success_by_budget[b] for name in ("LEARN", "SCRAMBLED", "FROZEN")}
