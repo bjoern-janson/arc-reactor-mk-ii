@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .domain import FAULTS, FULL_MASK, Menu, answer, candidate_child
+from .domain import FAULTS, FULL_MASK, QuerySet, answer, candidate_child
 from .resources import ResourceCounter
 
 
 @dataclass(frozen=True)
 class SelectorView:
-    menu: Menu
+    menu: QuerySet
     candidate_mask: int
     remaining_query_ids: tuple[int, ...]
     remaining_budget: int
@@ -21,7 +21,7 @@ class SelectorView:
 
 @dataclass(frozen=True)
 class HostState:
-    menu: Menu
+    menu: QuerySet
     fault: int
     candidate_mask: int
     remaining_query_ids: tuple[int, ...]
@@ -42,7 +42,7 @@ class HostState:
         )
 
 
-def initial_state(menu: Menu, fault: int, budget: int) -> HostState:
+def initial_state(menu: QuerySet, fault: int, budget: int) -> HostState:
     if fault not in FAULTS:
         raise ValueError("fault must be in 0..7")
     if budget < 0:
@@ -51,7 +51,7 @@ def initial_state(menu: Menu, fault: int, budget: int) -> HostState:
         menu=menu,
         fault=fault,
         candidate_mask=FULL_MASK,
-        remaining_query_ids=tuple(range(4)),
+        remaining_query_ids=tuple(range(len(menu.queries))),
         remaining_budget=budget,
         observations=(),
     )
