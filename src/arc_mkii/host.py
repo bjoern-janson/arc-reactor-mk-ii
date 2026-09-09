@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .domain import FAULTS, FULL_MASK, Menu, answer, candidate_child
+from .resources import ResourceCounter
 
 
 @dataclass(frozen=True)
@@ -56,13 +57,20 @@ def initial_state(menu: Menu, fault: int, budget: int) -> HostState:
     )
 
 
-def execute_query(state: HostState, query_id: int) -> HostState:
+def execute_query(
+    state: HostState,
+    query_id: int,
+    resources: ResourceCounter | None = None,
+) -> HostState:
     if query_id not in state.remaining_query_ids:
         raise ValueError("query is not available")
     if state.remaining_budget <= 0:
         raise ValueError("query budget exhausted")
     qmask = state.menu.queries[query_id]
     observed = answer(qmask, state.fault)
+    if resources is not None:
+        resources.primitive_query_executions += 1
+        resources.public_truth_table_bit_inspections += state.candidate_mask.bit_count()
     kept = candidate_child(state.candidate_mask, qmask, observed)
     if kept == 0:
         raise RuntimeError("truth-consistent query removed every candidate")
@@ -76,7 +84,12 @@ def execute_query(state: HostState, query_id: int) -> HostState:
     )
 
 
-def terminal_repair(state: HostState | SelectorView) -> int:
+def terminal_repair(
+    state: HostState | SelectorView,
+    resources: ResourceCounter | None = None,
+) -> int:
+    if resources is not None:
+        resources.terminal_actions += 1
     mask = state.candidate_mask
     if mask == 0:
         raise ValueError("cannot repair from an empty candidate set")
