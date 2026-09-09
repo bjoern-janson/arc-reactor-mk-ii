@@ -16,13 +16,19 @@ V0 showed that the competent FROZEN baseline had almost no available headroom on
 
 A post-closure autopsy found that V1 repeatedly instantiated the same narrow mechanism: FROZEN selected a tied 4/4 root with continuation value 6 while another tied root preserved continuation value 8, and the frozen future-resolution features exposed the distinction. A separate sacrificial six-query exploration showed that adding one primitive query sharply reduced the collapse from operational presentations to canonical families. That exploratory stream is permanently ineligible for V2 scientific use.
 
-V2 therefore changes exactly one scientific chamber parameter:
+V2 therefore changes exactly one scientific chamber parameter relative to the V1 chamber concept:
 
 ```text
 five primitive queries -> six primitive queries
 ```
 
-Everything that learns remains frozen.
+Everything that learns remains frozen at the V0 learner base.
+
+### Executable-authority boundary
+
+The reconstructed V1 negative record is research lineage, not executable authority. The original local V1 G1 implementation fossil is unavailable and must not be silently reconstructed as an implementation dependency.
+
+V2 implementation must therefore descend scientifically from the sealed V0 learner at `c9897ae...` and add only the generic query-count/chamber/census plumbing required by this design. No fitted learner, feature, coefficient, training rule, or evaluation rule may be inherited from sacrificial probe code or from an unavailable V1 implementation.
 
 ---
 
@@ -46,7 +52,8 @@ V2 must not change the following from the V0 learner design:
 - fresh-host evaluation;
 - bidirectional selector-state transplant;
 - raw resource-vector accounting;
-- the V0 ignition acceptance rule.
+- the V0 ignition acceptance rule;
+- the V0 deterministic SCRAMBLED-feedback construction, including its stratum definition and offset rule.
 
 The frozen eight features remain exactly:
 
@@ -283,13 +290,13 @@ All remaining admitted families are outside the confirmatory V2 scientific run a
 
 ## 8. Training and controls — unchanged learner
 
-If G1 passes and the protocol is frozen, training collection generalizes only the available public query IDs from five to six.
+If G1 passes and the protocol is frozen, the V2 implementation starts from the four-query V0 learner and generalizes only query-count-dependent environment plumbing so that the same training algorithm can enumerate six public query IDs.
 
 For each TRAIN arena, budget in `{2,3}`, hidden fault in `0..7`, and every ordered sequence of distinct queries of permitted length, execute the fixed sequence until singleton or budget exhaustion. Terminal repair success is assigned to each actually executed state/action row from that sequence exactly as in V0.
 
 LEARN fits the same exact ridge regression to informative feedback.
 
-SCRAMBLED uses the same prospectively frozen deterministic feedback permutation within equal `(budget, decision_depth)` strata.
+SCRAMBLED uses the exact V0 corruption construction on the V2 row population: the same `(budget, decision_depth)` strata, deterministic row ordering, and deterministic offset rule. The resulting V2 scramble descriptor is frozen at G2 before fitting.
 
 FROZEN uses `THETA0` unchanged and consumes no training.
 
