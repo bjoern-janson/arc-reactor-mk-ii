@@ -23,3 +23,11 @@ def test_scramble_descriptor_is_deterministic_and_reconstructive_metadata():
     assert descriptor == scramble_descriptor(rows)
     assert descriptor["strata"]
     assert all(set(item) == {"budget", "decision_depth", "size", "offset", "row_ids_sha256"} for item in descriptor["strata"])
+
+
+def test_streaming_descriptor_matches_full_row_descriptor():
+    from arc_mkii.scramble import scramble_descriptor_from_menus
+
+    menus = [Menu((15, 23, 51, 85)), Menu((1, 2, 4, 8))]
+    rows = build_training_rows(menus)
+    assert scramble_descriptor_from_menus(menus) == scramble_descriptor(rows)

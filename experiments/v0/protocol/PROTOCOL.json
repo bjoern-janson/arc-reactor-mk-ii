@@ -1,0 +1,1 @@
+{"budgets":[2,3],"eval_count":64,"fault_count":8,"feature_count":8,"query_count":4,"ridge_lambda":{"d":100,"n":1},"schema":"arc-reactor-mkii-protocol/v0","scope":"Evaluation novelty is limited to unseen canonical query configurations over the same eight-fault universe.","seed":"arc-reactor-mk-ii/v0/menu-seed/2026-09-09","train_count":256}

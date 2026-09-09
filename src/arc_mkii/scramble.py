@@ -5,7 +5,8 @@ from collections import defaultdict
 from dataclasses import replace
 from typing import Iterable
 
-from .corpus import TrainingRow
+from .corpus import TrainingRow, build_training_rows
+from .domain import Menu
 
 SCHEMA = "arc-reactor-mkii-scramble/v0"
 
@@ -58,3 +59,28 @@ def scramble_feedback(rows: Iterable[TrainingRow]) -> list[TrainingRow]:
         for i, destination in enumerate(ordered):
             feedback_by_id[destination.row_id] = ordered[(i + offset) % n].feedback
     return [replace(row, feedback=feedback_by_id[row.row_id]) for row in source_rows]
+
+
+def scramble_descriptor_from_menus(menus: Iterable[Menu]) -> dict[str, object]:
+    grouped_ids: dict[tuple[int, int], list[str]] = defaultdict(list)
+    for menu in menus:
+        for row in build_training_rows([menu]):
+            grouped_ids[(row.budget, row.decision_depth)].append(row.row_id)
+
+    strata = []
+    for budget, depth in sorted(grouped_ids):
+        ordered_ids = sorted(grouped_ids[(budget, depth)])
+        n = len(ordered_ids)
+        payload = b"\n".join(row_id.encode("ascii") for row_id in ordered_ids)
+        strata.append(
+            {
+                "budget": budget,
+                "decision_depth": depth,
+                "size": n,
+                "offset": _offset(budget, depth, n),
+                "row_ids_sha256": hashlib.sha256(
+                    b"arc-mkii-row-id-list-v0\0" + payload
+                ).hexdigest(),
+            }
+        )
+    return {"schema": SCHEMA, "strata": strata}

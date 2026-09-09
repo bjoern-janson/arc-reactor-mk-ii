@@ -11,6 +11,7 @@ from .canonical import canonical_id
 from .domain import Menu
 from .features import feature_vector
 from .host import execute_query, initial_state, terminal_repair
+from .resources import ResourceCounter
 
 
 def _fraction_record(value: Fraction) -> dict[str, int]:
@@ -51,7 +52,10 @@ class TrainingRow:
         return hashlib.sha256(b"arc-mkii-training-row-v0\0" + payload).hexdigest()
 
 
-def build_training_rows(menus: Iterable[Menu]) -> list[TrainingRow]:
+def build_training_rows(
+    menus: Iterable[Menu],
+    resources: ResourceCounter | None = None,
+) -> list[TrainingRow]:
     rows: list[TrainingRow] = []
     ordered_menus = sorted(menus, key=canonical_id)
     for menu in ordered_menus:
@@ -71,11 +75,11 @@ def build_training_rows(menus: Iterable[Menu]) -> list[TrainingRow]:
                                 "candidate_mask": state.candidate_mask,
                                 "remaining_query_ids": state.remaining_query_ids,
                                 "action_query_id": query_id,
-                                "features": feature_vector(view, query_id),
+                                "features": feature_vector(view, query_id, resources=resources),
                             }
                         )
-                        state = execute_query(state, query_id)
-                    repair = terminal_repair(state)
+                        state = execute_query(state, query_id, resources=resources)
+                    repair = terminal_repair(state, resources=resources)
                     feedback = int(repair == fault)
                     for item in staged:
                         rows.append(

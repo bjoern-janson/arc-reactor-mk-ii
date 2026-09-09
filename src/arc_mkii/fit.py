@@ -5,6 +5,7 @@ from typing import Sequence
 
 from .corpus import TrainingRow
 from .selector import THETA0
+from .resources import ResourceCounter
 
 LAMBDA = Fraction(1, 100)
 
@@ -35,11 +36,16 @@ def solve_linear_system(a: Sequence[Sequence[Fraction]], b: Sequence[Fraction]) 
     return [matrix[i][-1] for i in range(n)]
 
 
-def fit_theta(rows: Sequence[TrainingRow]) -> tuple[Fraction, ...]:
+def fit_theta(
+    rows: Sequence[TrainingRow],
+    resources: ResourceCounter | None = None,
+) -> tuple[Fraction, ...]:
     p = 8
     a = [[Fraction(0) for _ in range(p)] for _ in range(p)]
     b = [Fraction(0) for _ in range(p)]
     for row in rows:
+        if resources is not None:
+            resources.training_rows_consumed += 1
         x = row.features
         if len(x) != p:
             raise ValueError("training row must have eight features")
