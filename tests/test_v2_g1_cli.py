@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -53,7 +54,9 @@ forbidden = {
 }
 assert forbidden.isdisjoint(sys.modules), forbidden.intersection(sys.modules)
 '''
-    subprocess.run([sys.executable, "-c", code], check=True)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "src"
+    subprocess.run([sys.executable, "-c", code], check=True, env=env)
 
 
 def test_census_command_writes_exact_deterministic_custody(tmp_path, monkeypatch):
