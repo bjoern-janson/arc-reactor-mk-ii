@@ -1,0 +1,159 @@
+name: V2 G1 Official Census
+
+on:
+  push:
+    branches:
+      - freeze/v2-g1-implementation
+
+permissions:
+  contents: write
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install test dependency
+        run: python -m pip install pytest
+      - name: Verify frozen implementation before result-bearing execution
+        run: |
+          python --version
+          python -m pytest -q
+          python scripts/v2_g1_v0_semantic_regression.py
+          test -z "$(git status --short)"
+          echo "G1_IMPLEMENTATION_FREEZE_ID_V2=$(git rev-parse HEAD)"
+      - name: Enforce exactly-once census start
+        run: |
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+          if git show-ref --verify --quiet refs/remotes/origin/record/v2-g1-census; then
+            echo 'V2 G1 record already exists; refusing to rerun census.' >&2
+            exit 1
+          fi
+          if git show-ref --verify --quiet refs/remotes/origin/lock/v2-g1-census-started; then
+            echo 'V2 G1 census start lock already exists; refusing a second result-bearing traversal.' >&2
+            exit 1
+          fi
+          git push origin HEAD:refs/heads/lock/v2-g1-census-started
+      - name: Execute official full frozen V2 G1 universe exactly once
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m arc_mkii.v2_g1_cli census --out experiments/v2/g1-census
+      - name: Verify retained census custody without rerun
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path('experiments/v2/g1-census')
+          expected = {'CENSUS.json', 'FAMILIES.jsonl', 'SHA256.txt'}
+          actual = {p.name for p in root.iterdir()}
+          assert actual == expected, (actual, expected)
+
+          manifest = {}
+          for line in (root / 'SHA256.txt').read_text(encoding='ascii').splitlines():
+              digest, name = line.split('  ', 1)
+              manifest[name] = digest
+          assert set(manifest) == {'CENSUS.json', 'FAMILIES.jsonl'}
+          for name, digest in manifest.items():
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest
+
+          census = json.loads((root / 'CENSUS.json').read_text(encoding='utf-8'))
+          family_count = sum(1 for line in (root / 'FAMILIES.jsonl').read_text(encoding='utf-8').splitlines() if line)
+          assert census['counts']['raw_counters'] == 1_048_576
+          assert census['counts']['admitted_canonical'] == family_count
+          assert census['implementation_commit'] == '${{ github.sha }}'
+          assert census['status'] in {'G1_PASS', 'ARENA_UNIVERSE_INSUFFICIENT'}
+          print(json.dumps(census, indent=2, sort_keys=True))
+          print((root / 'SHA256.txt').read_text(encoding='ascii'), end='')
+          PY
+      - name: Write bounded G1 record
+        env:
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path('experiments/v2/g1-census')
+          census = json.loads((root / 'CENSUS.json').read_text(encoding='utf-8'))
+          counts = census['counts']
+          hashes = (root / 'SHA256.txt').read_text(encoding='ascii').rstrip()
+          status = census['status']
+
+          if status == 'G1_PASS':
+              boundary = '''G1 CONSTRUCTION GATE PASS
+          G2 PROTOCOL-FREEZE DESIGN/IMPLEMENTATION AUTHORIZED ONLY
+          NO TRAINING
+          NO EVALUATION
+          NO V2 SCIENTIFIC RESULT'''
+          else:
+              boundary = '''ARENA_UNIVERSE_INSUFFICIENT
+          NO G2
+          NO TRAINING
+          NO V2 SCIENTIFIC RESULT'''
+
+          record = f'''# ARC-MKII-V2 G1 Structural Census Record
+
+          **Status:** `{status}`
+
+          preflight base: 078b3cfc948262bb71604a631e17972f8ad11a1f
+          G1_IMPLEMENTATION_FREEZE_ID_V2: {os.environ['WORKFLOW_SHA']}
+          seed: arc-reactor-mk-ii/v2-six-query/confirmatory/menu-seed/2026-09-09/fresh-001
+          raw counters: 1,048,576
+          canonical threshold: 320
+          workflow run: {os.environ['WORKFLOW_RUN_ID']}
+
+          ## Census counts
+
+          ```text
+          raw_counters={counts['raw_counters']}
+          grammar_valid={counts['grammar_valid']}
+          root_matched_tie={counts['root_matched_tie']}
+          planner_gap={counts['planner_gap']}
+          feature_representable={counts['feature_representable']}
+          admitted_presentations={counts['admitted_presentations']}
+          admitted_canonical={counts['admitted_canonical']}
+          ```
+
+          ## Census custody SHA-256
+
+          ```text
+          {hashes}
+          ```
+
+          ## Authorization boundary
+
+          ```text
+          {boundary}
+          ```
+
+          This is a G1 construction-gate result only. No TRAIN/EVAL split, fitting, evaluation, or ignition computation was performed.
+          '''
+          # The dedent is structural only; values above are already fixed.
+          import textwrap
+          Path('experiments/v2/G1_RECORD.md').write_text(textwrap.dedent(record), encoding='utf-8')
+          PY
+      - name: Fossilize G1 result on dedicated record branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b record/v2-g1-census
+          git add experiments/v2/g1-census experiments/v2/G1_RECORD.md
+          STATUS=$(python -c "import json; print(json.load(open('experiments/v2/g1-census/CENSUS.json'))['status'])")
+          if [ "$STATUS" = "G1_PASS" ]; then
+            git commit -m 'record: freeze V2 G1 six-query census'
+          else
+            git commit -m 'record: close V2 G1 insufficient arena census'
+          fi
+          git push origin record/v2-g1-census
+          echo "V2_G1_RECORD_ID=$(git rev-parse HEAD)"
