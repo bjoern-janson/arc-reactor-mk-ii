@@ -1,6 +1,6 @@
 # ARC-MKII-V2 SIX-QUERY GLADIATOR — Feedback-to-Inquiry Arena Design
 
-**Status:** `DESIGN_ONLY / NO_IMPLEMENTATION / NO_CENSUS / NO_TRAINING / NO_SCIENTIFIC_RUN`
+**Status:** `DESIGN_FROZEN / PREFLIGHT_HARDENING_PRESENT / NO_V2_CENSUS / NO_TRAINING / NO_SCIENTIFIC_RUN`
 
 **Scientific learner base:** `c9897ae02829aeed31cccdaef662de4c715b312e`
 
@@ -12,7 +12,7 @@
 
 V2 is a **chamber-diversity repair**, not a learner redesign.
 
-V0 showed that the competent FROZEN baseline had almost no available headroom on the original four-query random chamber. V1 introduced a matched-tie structural chamber where locally identical root splits could differ in downstream diagnostic value, but its frozen G1 census yielded only 40 canonical structural families, below the required 320.
+A prior local V0 execution, not committed to GitHub at execution time, was reported as showing that the competent FROZEN baseline occupied almost all available headroom on the original four-query random chamber. That historical result motivated V1/V2, but it is not treated here as repository-verifiable evidence merely because the V0 implementation and protocol are committed. V1 then introduced a matched-tie structural chamber where locally identical root splits could differ in downstream diagnostic value, but its frozen G1 census yielded only 40 canonical structural families, below the required 320.
 
 A post-closure autopsy found that V1 repeatedly instantiated the same narrow mechanism: FROZEN selected a tied 4/4 root with continuation value 6 while another tied root preserved continuation value 8, and the frozen future-resolution features exposed the distinction. A separate sacrificial six-query exploration showed that adding one primitive query sharply reduced the collapse from operational presentations to canonical families. That exploratory stream is permanently ineligible for V2 scientific use.
 
@@ -50,10 +50,12 @@ V2 must not change the following from the V0 learner design:
 - exact planner reference;
 - minimal selector artifact serialization;
 - fresh-host evaluation;
-- bidirectional selector-state transplant;
+- the existing fresh-host artifact replay check historically implemented under the transplant name;
 - raw resource-vector accounting;
 - the V0 ignition acceptance rule;
 - the V0 deterministic SCRAMBLED-feedback construction, including its stratum definition and offset rule.
+
+The current replay check verifies deterministic behavior of the same serialized `theta` in fresh deterministic hosts. It does **not** independently establish transfer from a complex learned host into a distinct pre-existing host architecture. Any stronger transplant claim requires a separate preregistered experiment.
 
 The frozen eight features remain exactly:
 
@@ -298,6 +300,8 @@ LEARN fits the same exact ridge regression to informative feedback.
 
 SCRAMBLED uses the exact V0 corruption construction on the V2 row population: the same `(budget, decision_depth)` strata, deterministic row ordering, and deterministic offset rule. The resulting V2 scramble descriptor is frozen at G2 before fitting.
 
+The V0 row ordering used by this corruption is deterministic but is not a pristine label-blind randomization: row identity includes `fault` and `terminal_repair`, which together determine the binary feedback label. Therefore SCRAMBLED is interpreted only as a **prospectively fixed matched corrupted-feedback control with preserved within-stratum feedback marginals**, not as a perfect conditional-independence or label-blind null. V2 freezes this exact control rather than redesigning it after V0/V1 observations.
+
 FROZEN uses `THETA0` unchanged and consumes no training.
 
 All three arms share the same primitive truth tables, budgets, feature interface, repair rule, storage schema, TRAIN/EVAL manifests, and evaluation cases.
@@ -322,7 +326,7 @@ and simultaneously:
 R_L(B)\ge R_S(B)\land R_L(B)\ge R_F(B).
 ```
 
-The already-declared bidirectional selector-state transplant must also pass.
+The existing fresh-host artifact replay check, historically named the bidirectional selector-state transplant check, must also pass. Passing it supports deterministic replay of the serialized selector state in fresh hosts; it does not by itself establish stronger cross-architecture transplantation.
 
 A gain at one budget with a loss at the other is a tradeoff, not ignition. Beating only SCRAMBLED or only FROZEN is insufficient.
 
@@ -381,7 +385,7 @@ feedback
 
 ---
 
-## 11. Resource accounting
+## 11. Resource accounting and preflight custody hardening
 
 Retain the V0 raw resource vector:
 
@@ -397,13 +401,23 @@ Retain the V0 raw resource vector:
 
 Do not collapse this vector into a post-hoc weighted scalar.
 
+Before any future V2 fit/evaluation boundary, the implementation must fail closed unless the frozen protocol directory has the exact declared file set, every payload SHA-256 matches `MANIFEST_SHA256.txt`, the protocol schema is correct, and TRAIN/EVAL line counts match their declared counts. The verified manifest digest must be recorded in execution output.
+
+Resource instrumentation must include truth-table work performed by the selector's usefulness filter as well as feature computation. This is a measurement repair only: it must leave query scores, chosen queries, repairs, and scientific PASS/FAIL behavior unchanged.
+
+These custody/accounting repairs are explicitly non-scientific preflight hardening. If either repair changes learner behavior, arm outcomes, protocol membership, or the frozen acceptance criterion, STOP and treat it as a new scientific design rather than a plumbing fix.
+
 ---
 
 ## 12. Gates and custody
 
 ### G0 — design freeze
 
-Freeze this document before V2 implementation.
+Freeze this document before V2 scientific implementation.
+
+### G0.5 — behavior-neutral preflight hardening
+
+Protocol verification and complete selector resource accounting may be repaired before G1/G4 provided regression tests establish that the scientific behavior is unchanged and the repairs only strengthen custody/measurement.
 
 ### G1 — fresh six-query structural census
 
@@ -423,7 +437,7 @@ All legacy V0 tests plus V2-specific tests must pass. Record an exact `IMPLEMENT
 
 Only after explicit authorization may the frozen V2 implementation fit LEARN and SCRAMBLED and inspect the 64-family EVAL manifest.
 
-After G2, no seed redraw, manifest substitution, feature change, learner change, grammar change, or acceptance-rule change is permitted.
+Every fit/evaluation entry point must verify the frozen protocol before consuming it. After G2, no seed redraw, manifest substitution, feature change, learner change, grammar change, or acceptance-rule change is permitted.
 
 ---
 
@@ -435,7 +449,7 @@ If G1 passes but LEARN does not beat both controls under the frozen criterion, c
 
 If V2 ignites, the maximum supported claim is:
 
-> In this frozen finite six-query diagnostic apparatus, informative terminal feedback changed a portable eight-parameter query selector such that, on structurally fresh held-out arenas with tied immediate information gain, it selected questions that preserved more useful downstream diagnostic structure and achieved more correct repairs than both its frozen initial policy and a matched scrambled-feedback control, without losing at the other tested budget.
+> In this frozen finite six-query diagnostic apparatus, informative terminal feedback changed a portable eight-parameter query selector such that, on structurally fresh held-out arenas with tied immediate information gain, it selected questions that preserved more useful downstream diagnostic structure and achieved more correct repairs than both its frozen initial policy and the prospectively fixed matched corrupted-feedback control, without losing at the other tested budget.
 
 V2 does **not** establish general active learning, general intelligence, unknown-change detection, safe forgetting, protected corrective-frontier expansion, human corrigibility, neural transfer, or general self-improvement.
 
