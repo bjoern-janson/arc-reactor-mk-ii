@@ -21,7 +21,25 @@ jobs:
         run: python -m pip install pytest
       - name: Full repository suite
         run: pytest -q
-      - name: G2 module compile
-        run: python -m py_compile src/arc_mkii/v2_g2_protocol.py src/arc_mkii/v2_g2_cli.py
+      - name: G2 module compile without repository bytecode
+        run: |
+          python - <<'PY'
+          import py_compile
+          import tempfile
+          from pathlib import Path
+
+          sources = [
+              Path('src/arc_mkii/v2_g2_protocol.py'),
+              Path('src/arc_mkii/v2_g2_cli.py'),
+          ]
+          with tempfile.TemporaryDirectory() as tmp:
+              root = Path(tmp)
+              for source in sources:
+                  py_compile.compile(
+                      str(source),
+                      cfile=str(root / f'{source.name}c'),
+                      doraise=True,
+                  )
+          PY
       - name: Clean working tree
         run: test -z "$(git status --porcelain)"
