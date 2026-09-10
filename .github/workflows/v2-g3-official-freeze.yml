@@ -1,0 +1,175 @@
+name: V2 G3 Official Executable Freeze
+
+on:
+  push:
+    branches:
+      - freeze/v2-g3-implementation
+
+permissions:
+  contents: write
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      G2_RECORD_ID: "5689645287c41a71e109f1b022529e8b98f2006d"
+      G2_PROTOCOL_MANIFEST_SHA256: "419b7be408a5a37ab6a7ee304ac58646683a6fc4771b503e0b0f475002b4d075"
+      G3_DESIGN_FREEZE_ID: "b6d520eafd81b367c81c145d05c4702dac94b74c"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependency
+        run: python -m pip install pytest
+
+      - name: Verify G3 executable lineage and non-ancestral design reference
+        run: |
+          python --version
+          test "${GITHUB_REF_NAME}" = "freeze/v2-g3-implementation"
+          git cat-file -e "${G2_RECORD_ID}^{commit}"
+          git cat-file -e "${G3_DESIGN_FREEZE_ID}^{commit}"
+          git merge-base --is-ancestor "$G2_RECORD_ID" HEAD
+          if git merge-base --is-ancestor "$G3_DESIGN_FREEZE_ID" HEAD; then
+            echo 'G3 design fossil entered executable ancestry; refusing freeze.' >&2
+            exit 1
+          fi
+          echo "G3_IMPLEMENTATION_FREEZE_ID_V2=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Verify frozen scientific primitives and G2 protocol are byte-unchanged
+        run: |
+          git diff --exit-code "$G2_RECORD_ID" HEAD -- \
+            src/arc_mkii/features.py \
+            src/arc_mkii/selector.py \
+            src/arc_mkii/fit.py \
+            src/arc_mkii/artifact.py \
+            src/arc_mkii/host.py \
+            src/arc_mkii/scramble.py \
+            src/arc_mkii/evaluate.py \
+            src/arc_mkii/planner.py \
+            src/arc_mkii/v2_g2_protocol.py \
+            experiments/v2/protocol
+
+      - name: Run full G3 implementation verification
+        run: |
+          pytest -q
+          python -m arc_mkii.v2_g3_cli verify \
+            --protocol experiments/v2/protocol \
+            --repo-root . > /tmp/v2-g3-verification.json
+          cat /tmp/v2-g3-verification.json
+          test -z "$(git status --porcelain)"
+
+      - name: Verify G3 produced no result-bearing V2 residue
+        run: |
+          test ! -e experiments/v2/g4-primary
+          test ! -e experiments/v2/g4-autopsy
+          test ! -e experiments/v2/PRIMARY_RESULT.json
+          test ! -e experiments/v2/ROOT_AUTOPSY.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          verification = json.loads(Path('/tmp/v2-g3-verification.json').read_text(encoding='utf-8'))
+          assert verification['status'] == 'V2_G3_EXECUTABILITY_VERIFIED_NO_RESULT'
+          assert verification['g2_protocol_manifest_sha256'] == '419b7be408a5a37ab6a7ee304ac58646683a6fc4771b503e0b0f475002b4d075'
+          assert verification['train_rows'] == 817105
+          assert verification['fit_performed'] is False
+          assert verification['eval_performed'] is False
+          assert verification['autopsy_performed'] is False
+          assert verification['ignition_computed'] is False
+          assert verification['g4_trigger_branch'] == 'run/v2-g4-official'
+          assert verification['g4_lock_before_primary'] is True
+          assert verification['g4_primary_before_autopsy'] is True
+          assert verification['g4_no_automatic_g3_trigger'] is True
+          PY
+
+      - name: Enforce fresh G3 fossil and absence of any G4 execution state
+        run: |
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+          for ref in \
+            freeze/v2-g3-executable \
+            run/v2-g4-official \
+            lock/v2-g4-started \
+            record/v2-g4-primary \
+            record/v2-g4-autopsy
+          do
+            if git show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+              echo "Forbidden pre-G3-close custody ref exists: $ref" >&2
+              exit 1
+            fi
+          done
+
+      - name: Write bounded G3 executability record
+        env:
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import textwrap
+          from pathlib import Path
+
+          verification = json.loads(Path('/tmp/v2-g3-verification.json').read_text(encoding='utf-8'))
+          strata = '\n'.join(
+              f"({item['budget']},{item['decision_depth']}): size={item['size']} offset={item['offset']} row_ids_sha256={item['row_ids_sha256']}"
+              for item in verification['train_strata']
+          )
+          record = f'''# ARC-MKII-V2 G3 Executable Implementation Record
+
+          **Status:** `V2 G3 EXECUTABLE IMPLEMENTATION: PASS / IMPLEMENTATION_FROZEN / NO_V2_SCIENTIFIC_RESULT`
+
+          G3_IMPLEMENTATION_FREEZE_ID_V2: {os.environ['G3_IMPLEMENTATION_FREEZE_ID_V2']}
+          G3_DESIGN_FREEZE_ID: {os.environ['G3_DESIGN_FREEZE_ID']}
+          G2_RECORD_ID: {os.environ['G2_RECORD_ID']}
+          G2_PROTOCOL_MANIFEST_SHA256: {os.environ['G2_PROTOCOL_MANIFEST_SHA256']}
+          workflow run: {os.environ['WORKFLOW_RUN_ID']}
+
+          ## Executability custody
+
+          ```text
+          V2 TRAIN rows: {verification['train_rows']}
+          {strata}
+          canonical_task_identity: family_id
+          frozen scientific primitives: BYTE-UNCHANGED FROM G2
+          G4 trigger: {verification['g4_trigger_branch']} ONLY
+          G4 lock before first fit: VERIFIED BY STATIC TOPOLOGY
+          primary fossil before root autopsy: VERIFIED BY STATIC TOPOLOGY
+          ```
+
+          ## Result-isolation boundary
+
+          ```text
+          NO LEARN FIT
+          NO SCRAMBLED FIT
+          NO EVAL EXECUTION
+          NO ROOT-AUTOPSY VALUES
+          NO IGNITION
+          NO V2 SCIENTIFIC RESULT
+          ```
+
+          G3 verified the exact 817,105-row TRAIN identity bridge against all five G2-frozen SCRAMBLED strata and froze result-capable execution machinery without running it on the frozen V2 scientific evaluation.
+
+          ## Authorization boundary
+
+          ```text
+          G4 RESULT-BEARING EXECUTION AUTHORIZED ONLY
+          ```
+
+          G4 is not triggered by this fossil. A future explicit `run/v2-g4-official` ref must be created separately and must point exactly to the frozen G3 executable record.
+          '''
+          Path('experiments/v2/G3_RECORD.md').write_text(textwrap.dedent(record), encoding='utf-8')
+          PY
+
+      - name: Fossilize G3 executable record as direct child of implementation freeze
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b freeze/v2-g3-executable
+          git add experiments/v2/G3_RECORD.md
+          git commit -m 'record: freeze V2 G3 executable implementation'
+          test "$(git rev-parse HEAD^)" = "$G3_IMPLEMENTATION_FREEZE_ID_V2"
+          git push origin freeze/v2-g3-executable
+          echo "V2_G3_EXECUTABLE_RECORD_ID=$(git rev-parse HEAD)"

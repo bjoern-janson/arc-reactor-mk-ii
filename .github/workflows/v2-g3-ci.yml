@@ -34,9 +34,12 @@ jobs:
             src/arc_mkii/host.py \
             src/arc_mkii/scramble.py \
             src/arc_mkii/evaluate.py \
+            src/arc_mkii/planner.py \
             src/arc_mkii/v2_g2_protocol.py \
             experiments/v2/protocol
-      - name: G3 module compile without repository bytecode
+      - name: Verify dormant G4 custody topology without importing result path
+        run: python -m arc_mkii.v2_g3_cli verify --protocol experiments/v2/protocol --repo-root . > /tmp/v2-g3-verification.json
+      - name: G3 and dormant G4 module compile without repository bytecode
         run: |
           python - <<'PY'
           import py_compile
@@ -45,10 +48,11 @@ jobs:
 
           sources = [
               Path('src/arc_mkii/v2_g3_execution.py'),
+              Path('src/arc_mkii/v2_g3_topology.py'),
               Path('src/arc_mkii/v2_g3_cli.py'),
+              Path('src/arc_mkii/v2_g4_execution.py'),
+              Path('src/arc_mkii/v2_g4_cli.py'),
           ]
-          optional = [Path('src/arc_mkii/v2_g4_execution.py')]
-          sources.extend(path for path in optional if path.exists())
           with tempfile.TemporaryDirectory() as tmp:
               root = Path(tmp)
               for source in sources:
