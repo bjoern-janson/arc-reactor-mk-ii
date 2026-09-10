@@ -1,0 +1,235 @@
+name: V2 G2 Official Protocol Freeze
+
+on:
+  push:
+    branches:
+      - freeze/v2-g2-implementation
+
+permissions:
+  contents: write
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      G1_RECORD_ID: "1edf919be5a9810d8e670ed26c0174642b3e7756"
+      G1_IMPLEMENTATION_FREEZE_ID_V2: "9ba2e6e8ad448e72702ade6af23f4a1a25fbe932"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependency
+        run: python -m pip install pytest
+      - name: Verify frozen G2 implementation before protocol constitution
+        run: |
+          python --version
+          pytest -q
+          python - <<'PY'
+          import py_compile
+          import tempfile
+          from pathlib import Path
+
+          sources = [
+              Path('src/arc_mkii/v2_g2_protocol.py'),
+              Path('src/arc_mkii/v2_g2_cli.py'),
+          ]
+          with tempfile.TemporaryDirectory() as tmp:
+              root = Path(tmp)
+              for source in sources:
+                  py_compile.compile(
+                      str(source),
+                      cfile=str(root / f'{source.name}c'),
+                      doraise=True,
+                  )
+          PY
+          test -z "$(git status --porcelain)"
+          echo "G2_IMPLEMENTATION_FREEZE_ID_V2=$(git rev-parse HEAD)"
+      - name: Verify G1 ancestry and frozen custody
+        env:
+          PYTHONPATH: src
+        run: |
+          git cat-file -e "${G1_RECORD_ID}^{commit}"
+          git merge-base --is-ancestor "$G1_RECORD_ID" HEAD
+          git diff --exit-code "$G1_RECORD_ID" HEAD -- experiments/v2/g1-census
+          python - <<'PY'
+          from pathlib import Path
+          from arc_mkii.v2_g2_protocol import load_g1_custody
+
+          census, families = load_g1_custody(Path('experiments/v2/g1-census'))
+          assert census['implementation_commit'] == '9ba2e6e8ad448e72702ade6af23f4a1a25fbe932'
+          assert census['status'] == 'G1_PASS'
+          assert census['counts']['admitted_canonical'] == 436
+          assert len(families) == 436
+          PY
+      - name: Enforce fresh G2 protocol fossil
+        run: |
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+          if git show-ref --verify --quiet refs/remotes/origin/freeze/v2-g2-protocol; then
+            echo 'V2 G2 protocol fossil already exists; refusing a second official constitution.' >&2
+            exit 1
+          fi
+      - name: Constitute frozen V2 G2 protocol
+        env:
+          PYTHONPATH: src
+        run: |
+          test ! -e experiments/v2/protocol
+          python -m arc_mkii.v2_g2_cli freeze \
+            --g1-root experiments/v2/g1-census \
+            --out experiments/v2/protocol
+      - name: Verify retained G2 protocol without regeneration
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m arc_mkii.v2_g2_cli verify \
+            --g1-root experiments/v2/g1-census \
+            --protocol experiments/v2/protocol
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path('experiments/v2/protocol')
+          expected = {
+              'PROTOCOL.json',
+              'TRAIN_ARENAS.jsonl',
+              'EVAL_ARENAS.jsonl',
+              'OUTSIDE_CONFIRMATORY.jsonl',
+              'SPLIT_RANKS.jsonl',
+              'SCRAMBLE.json',
+              'ROOT_AUTOPSY_CONTRACT.json',
+              'MANIFEST_SHA256.txt',
+          }
+          assert {p.name for p in root.iterdir()} == expected
+
+          protocol = json.loads((root / 'PROTOCOL.json').read_text(encoding='utf-8'))
+          assert protocol['train_count'] == 256
+          assert protocol['eval_count'] == 64
+          assert protocol['outside_confirmatory_count'] == 116
+          assert protocol['canonical_family_count'] == 436
+          assert protocol['canonical_task_identity'] == 'family_id'
+          assert protocol['root_autopsy_status'] == 'POST_G1_PRE_G4_UNEVALUATED_NONACCEPTANCE'
+
+          autopsy = json.loads((root / 'ROOT_AUTOPSY_CONTRACT.json').read_text(encoding='utf-8'))
+          assert autopsy['status'] == 'POST_G1_PRE_G4_UNEVALUATED_NONACCEPTANCE'
+          assert set(autopsy['diagnostics']) == {
+              'C_tie_max', 'C_tie_learn', 'T_retention_learn', 'C_actual_learn'
+          }
+          assert set(autopsy['diagnostics'].values()) == {'UNEVALUATED'}
+          assert 'values' not in autopsy
+
+          forbidden_keys = {
+              'theta',
+              'feedback',
+              'ignition_pass',
+              'success_by_budget',
+              'diagnostic_value',
+              'evaluated_value',
+          }
+
+          def walk(value):
+              if isinstance(value, dict):
+                  assert forbidden_keys.isdisjoint(value), forbidden_keys.intersection(value)
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+
+          for path in root.iterdir():
+              if path.suffix == '.json':
+                  walk(json.loads(path.read_text(encoding='utf-8')))
+              elif path.suffix == '.jsonl':
+                  for line in path.read_text(encoding='utf-8').splitlines():
+                      if line:
+                          walk(json.loads(line))
+
+          manifest = (root / 'MANIFEST_SHA256.txt').read_bytes()
+          print(f"G2_PROTOCOL_MANIFEST_SHA256={hashlib.sha256(manifest).hexdigest()}")
+          print(manifest.decode('ascii'), end='')
+          PY
+      - name: Write bounded G2 record
+        env:
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import textwrap
+          from pathlib import Path
+
+          root = Path('experiments/v2/protocol')
+          protocol = json.loads((root / 'PROTOCOL.json').read_text(encoding='utf-8'))
+          manifest_bytes = (root / 'MANIFEST_SHA256.txt').read_bytes()
+          manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+          manifest_text = manifest_bytes.decode('ascii').rstrip()
+
+          record = f'''# ARC-MKII-V2 G2 Protocol Constitution Record
+
+          **Status:** `PROTOCOL_FROZEN / NO_FIT / NO_EVAL / NO_V2_SCIENTIFIC_RESULT`
+
+          G2_IMPLEMENTATION_FREEZE_ID_V2: {os.environ['WORKFLOW_SHA']}
+          G1_RECORD_ID: 1edf919be5a9810d8e670ed26c0174642b3e7756
+          G1_IMPLEMENTATION_FREEZE_ID_V2: 9ba2e6e8ad448e72702ade6af23f4a1a25fbe932
+          workflow run: {os.environ['WORKFLOW_RUN_ID']}
+          G2_PROTOCOL_MANIFEST_SHA256: {manifest_sha}
+
+          ## Frozen protocol counts
+
+          ```text
+          TRAIN families: {protocol['train_count']}
+          EVAL families: {protocol['eval_count']}
+          outside confirmatory run: {protocol['outside_confirmatory_count']}
+          canonical families: {protocol['canonical_family_count']}
+          canonical_task_identity: {protocol['canonical_task_identity']}
+          ```
+
+          ## Protocol payload SHA-256
+
+          ```text
+          {manifest_text}
+          ```
+
+          ## Frozen interpretation boundaries
+
+          ```text
+          scramble constitution: FROZEN
+          scramble interpretation: matched corrupted-feedback control
+          root autopsy definitions: FROZEN / UNEVALUATED / NONACCEPTANCE ONLY
+          transplant/replay scientific ceiling: fresh-host serialized-artifact replay equivalence
+          G1 per-family multiplicities: NOT contemporaneously retained; no G2 reconstruction performed
+          ```
+
+          ## Authorization boundary
+
+          ```text
+          V2 G2 PROTOCOL CONSTITUTION: PASS
+          PROTOCOL_FROZEN
+          NO LEARN FIT
+          NO SCRAMBLED FIT
+          NO EVAL EXECUTION
+          NO ROOT-AUTOPSY VALUES
+          NO SCIENTIFIC RESULT
+          G3 IMPLEMENTATION FREEZE AUTHORIZED ONLY
+          ```
+
+          G2 computed protocol structure only. It did not fit a selector, evaluate an arm, compute ignition, or evaluate any root-autopsy diagnostic.
+          '''
+          Path('experiments/v2/G2_RECORD.md').write_text(textwrap.dedent(record), encoding='utf-8')
+          PY
+      - name: Fossilize G2 protocol as direct child of implementation freeze
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b freeze/v2-g2-protocol
+          git add experiments/v2/protocol experiments/v2/G2_RECORD.md
+          git commit -m 'record: freeze V2 G2 protocol constitution'
+          test "$(git rev-parse HEAD^)" = "${{ github.sha }}"
+          git push origin freeze/v2-g2-protocol
+          echo "V2_G2_RECORD_ID=$(git rev-parse HEAD)"
