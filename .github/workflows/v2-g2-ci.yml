@@ -1,0 +1,27 @@
+name: V2 G2 CI
+
+on:
+  push:
+    branches:
+      - impl/v2-g2-protocol-freeze
+      - freeze/v2-g2-implementation
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependency
+        run: python -m pip install pytest
+      - name: Full repository suite
+        run: pytest -q
+      - name: G2 module compile
+        run: python -m py_compile src/arc_mkii/v2_g2_protocol.py src/arc_mkii/v2_g2_cli.py
+      - name: Clean working tree
+        run: test -z "$(git status --porcelain)"
