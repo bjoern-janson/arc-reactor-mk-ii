@@ -25,6 +25,7 @@ from arc_mkii.v2_g2_protocol import (
     scramble_descriptor_for_train,
     split_families,
     split_rank,
+    training_row_identity_records,
     verify_v2_protocol,
 )
 
@@ -92,6 +93,18 @@ def test_row_id_serializer_is_byte_compatible_with_v0_training_row():
         terminal_repair=row.terminal_repair,
     )
     assert actual == row.row_id
+
+
+def test_v2_training_row_identity_binds_canonical_task_id_to_family_id():
+    family = FamilyInput(
+        canonical_bytes_hex="0001020408102040",
+        family_id=hashlib.sha256(b"task-id-binding").hexdigest(),
+        first_counter=1,
+        queries=(1, 2, 4, 8, 16, 32),
+    )
+    ranked = rank_families((family,))
+    first = next(iter(training_row_identity_records(ranked)))
+    assert first.canonical_task_id == family.family_id
 
 
 def test_six_query_scramble_descriptor_preserves_v0_strata_shape():
@@ -184,12 +197,31 @@ def test_freeze_and_verify_exact_protocol_on_real_g1(tmp_path):
     }
     protocol = json.loads((out / "PROTOCOL.json").read_text())
     assert protocol["schema"] == "arc-reactor-mkii-v2-protocol/v0"
+    assert protocol["canonical_task_identity"] == "family_id"
     assert protocol["root_autopsy_status"] == "POST_G1_PRE_G4_UNEVALUATED_NONACCEPTANCE"
-    forbidden_keys = {"theta", "ignition_pass", "success_by_budget", "C_tie_max", "C_tie_learn", "T_retention_learn", "C_actual_learn"}
+
+    autopsy = json.loads((out / "ROOT_AUTOPSY_CONTRACT.json").read_text())
+    assert autopsy["status"] == "POST_G1_PRE_G4_UNEVALUATED_NONACCEPTANCE"
+    assert set(autopsy["diagnostics"]) == {
+        "C_tie_max",
+        "C_tie_learn",
+        "T_retention_learn",
+        "C_actual_learn",
+    }
+    assert all(value == "UNEVALUATED" for value in autopsy["diagnostics"].values())
+    assert "values" not in autopsy
+
+    forbidden_output_tokens = {
+        '"theta":',
+        '"ignition_pass":',
+        '"success_by_budget":',
+        '"diagnostic_value":',
+        '"evaluated_value":',
+    }
     for path in out.iterdir():
         if path.suffix in {".json", ".jsonl"}:
             text = path.read_text(encoding="utf-8")
-            assert all(key not in text for key in forbidden_keys)
+            assert all(token not in text for token in forbidden_output_tokens)
 
     before = {path.name: path.read_bytes() for path in out.iterdir()}
     freeze_v2_protocol(repo_g1, out)
