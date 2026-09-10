@@ -12,6 +12,8 @@ jobs:
   census:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -139,7 +141,6 @@ jobs:
 
           This is a G1 construction-gate result only. No TRAIN/EVAL split, fitting, evaluation, or ignition computation was performed.
           '''
-          # The dedent is structural only; values above are already fixed.
           import textwrap
           Path('experiments/v2/G1_RECORD.md').write_text(textwrap.dedent(record), encoding='utf-8')
           PY
