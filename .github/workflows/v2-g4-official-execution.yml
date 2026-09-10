@@ -1,0 +1,163 @@
+name: V2 G4 Official Execution
+
+on:
+  push:
+    branches:
+      - run/v2-g4-official
+
+permissions:
+  contents: write
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      G2_RECORD_ID: "5689645287c41a71e109f1b022529e8b98f2006d"
+      G2_PROTOCOL_MANIFEST_SHA256: "419b7be408a5a37ab6a7ee304ac58646683a6fc4771b503e0b0f475002b4d075"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependency
+        run: python -m pip install pytest
+
+      - name: Verify explicit G4 authorization ref and frozen G3 executable
+        run: |
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+          test "${GITHUB_REF_NAME}" = "run/v2-g4-official"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse refs/remotes/origin/freeze/v2-g3-executable)"
+          G3_IMPL=$(git rev-parse HEAD^)
+          test "$G3_IMPL" = "$(git rev-parse refs/remotes/origin/freeze/v2-g3-implementation)"
+          git merge-base --is-ancestor "$G2_RECORD_ID" "$G3_IMPL"
+          echo "G3_IMPLEMENTATION_FREEZE_ID_V2=$G3_IMPL" >> "$GITHUB_ENV"
+          echo "G3_EXECUTABLE_RECORD_ID=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Verify exact G3 implementation and frozen G2 protocol before result lock
+        run: |
+          pytest -q
+          python -m arc_mkii.v2_g3_cli verify --protocol experiments/v2/protocol > /tmp/v2-g3-verification.json
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          manifest = Path('experiments/v2/protocol/MANIFEST_SHA256.txt').read_bytes()
+          actual = hashlib.sha256(manifest).hexdigest()
+          expected = '419b7be408a5a37ab6a7ee304ac58646683a6fc4771b503e0b0f475002b4d075'
+          assert actual == expected, (actual, expected)
+          PY
+          git diff --exit-code "$G2_RECORD_ID" "$G3_IMPLEMENTATION_FREEZE_ID_V2" -- \
+            src/arc_mkii/features.py \
+            src/arc_mkii/selector.py \
+            src/arc_mkii/fit.py \
+            src/arc_mkii/artifact.py \
+            src/arc_mkii/host.py \
+            src/arc_mkii/scramble.py \
+            src/arc_mkii/evaluate.py \
+            src/arc_mkii/planner.py \
+            src/arc_mkii/v2_g2_protocol.py \
+            experiments/v2/protocol
+          test ! -e experiments/v2/g4-primary
+          test ! -e experiments/v2/g4-autopsy
+
+      - name: Verify no previous G4 lock or result fossil
+        run: |
+          for ref in \
+            lock/v2-g4-started \
+            record/v2-g4-primary \
+            record/v2-g4-autopsy
+          do
+            if git show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+              echo "Existing G4 custody ref $ref; refusing a second official result-bearing execution." >&2
+              exit 1
+            fi
+          done
+
+      - name: Create exactly-once G4 start lock before first fit
+        run: |
+          git push origin HEAD:refs/heads/lock/v2-g4-started
+          git fetch origin refs/heads/lock/v2-g4-started:refs/remotes/origin/lock/v2-g4-started
+          LOCK_SHA=$(git rev-parse refs/remotes/origin/lock/v2-g4-started)
+          test "$LOCK_SHA" = "$(git rev-parse HEAD)"
+          echo "G4_START_LOCK_COMMIT=$LOCK_SHA" >> "$GITHUB_ENV"
+
+      - name: Execute frozen primary V2 result after lock
+        run: |
+          python -m arc_mkii.v2_g4_cli primary \
+            --protocol experiments/v2/protocol \
+            --out experiments/v2/g4-primary \
+            --implementation-commit "$G3_IMPLEMENTATION_FREEZE_ID_V2" \
+            --g4-start-lock-commit "$G4_START_LOCK_COMMIT"
+
+      - name: Verify primary result contains no root-autopsy values
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          root = Path('experiments/v2/g4-primary')
+          primary = json.loads((root / 'PRIMARY_RESULT.json').read_text(encoding='utf-8'))
+          assert primary['schema'] == 'arc-reactor-mkii-v2-g4-primary/v0'
+          assert primary['root_autopsy_status'] == 'NOT_COMPUTED_PRIMARY_RESULT_ONLY'
+          assert primary['implementation_commit'] == os.environ['G3_IMPLEMENTATION_FREEZE_ID_V2']
+          assert primary['g4_start_lock_commit'] == os.environ['G4_START_LOCK_COMMIT']
+          assert not Path('experiments/v2/g4-autopsy').exists()
+          text = '\n'.join(path.read_text(encoding='utf-8') for path in root.rglob('*.json'))
+          for key in ('C_tie_max', 'C_tie_learn', 'T_retention_learn', 'C_actual_learn'):
+              assert key not in text
+          PY
+
+      - name: Fossilize primary scientific result before autopsy
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b record/v2-g4-primary
+          git add experiments/v2/g4-primary
+          git commit -m 'record: fossilize V2 G4 primary result'
+          PRIMARY_SHA=$(git rev-parse HEAD)
+          git push origin record/v2-g4-primary
+          git fetch origin refs/heads/record/v2-g4-primary:refs/remotes/origin/record/v2-g4-primary
+          test "$PRIMARY_SHA" = "$(git rev-parse refs/remotes/origin/record/v2-g4-primary)"
+          echo "V2_G4_PRIMARY_RECORD_ID=$PRIMARY_SHA" >> "$GITHUB_ENV"
+
+      - name: Compute post-primary nonacceptance root autopsy only after durable primary
+        run: |
+          test "$(git rev-parse HEAD)" = "$V2_G4_PRIMARY_RECORD_ID"
+          test "$(git rev-parse refs/remotes/origin/record/v2-g4-primary)" = "$V2_G4_PRIMARY_RECORD_ID"
+          python -m arc_mkii.v2_g4_cli autopsy \
+            --protocol experiments/v2/protocol \
+            --primary experiments/v2/g4-primary \
+            --primary-record-commit "$V2_G4_PRIMARY_RECORD_ID" \
+            --out experiments/v2/g4-autopsy
+
+      - name: Verify autopsy is downstream and nonacceptance-only
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('experiments/v2/g4-autopsy/ROOT_AUTOPSY.json').read_text(encoding='utf-8'))
+          assert result['schema'] == 'arc-reactor-mkii-v2-g4-root-autopsy/v0'
+          assert result['status'] == 'POST_PRIMARY_NONACCEPTANCE_DIAGNOSTIC'
+          assert result['acceptance_effect'] == 'NONE'
+          assert set(result['values']) == {
+              'C_tie_max',
+              'C_tie_learn',
+              'T_retention_learn',
+              'C_actual_learn',
+              'best_common_orientation_count_shortfall',
+              'off_manifold_interference_count',
+              'within_manifold_ranking_error_count',
+          }
+          PY
+
+      - name: Fossilize downstream autopsy as direct child of primary
+        run: |
+          git checkout -b record/v2-g4-autopsy
+          git add experiments/v2/g4-autopsy
+          git commit -m 'record: fossilize post-primary V2 G4 root autopsy'
+          test "$(git rev-parse HEAD^)" = "$V2_G4_PRIMARY_RECORD_ID"
+          git push origin record/v2-g4-autopsy
+          echo "V2_G4_AUTOPSY_RECORD_ID=$(git rev-parse HEAD)"
