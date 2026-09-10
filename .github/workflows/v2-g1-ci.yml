@@ -10,6 +10,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,9 +28,7 @@ jobs:
           if [ -f scripts/v2_g1_v0_semantic_regression.py ]; then
             python scripts/v2_g1_v0_semantic_regression.py
           fi
-      - name: Diagnose pre-census repository cleanliness
+      - name: Require clean pre-census repository state
         run: |
-          echo '--- git status --short ---'
           git status --short
-          echo '--- end status ---'
           test -z "$(git status --short)"
